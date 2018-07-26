@@ -204,7 +204,7 @@ def run_nclu(module, command_list, command_string, commit, atomic, abort, descri
         elif command_helper(module, "show commit last") == "":
             _changed = False
 
-    return _changed, output
+    return _changed, output, dict(before=before+"\n", after=after+"\n")
 
 
 def main(testing=False):
@@ -226,9 +226,9 @@ def main(testing=False):
     abort = module.params.get('abort')
     description = module.params.get('description')
 
-    _changed, output = run_nclu(module, command_list, command_string, commit, atomic, abort, description)
+    _changed, output, diff = run_nclu(module, command_list, command_string, commit, atomic, abort, description)
     if not testing:
-        module.exit_json(changed=_changed, msg=output)
+        module.exit_json(changed=_changed, diff=diff, msg=output)
     elif testing:
         return {"changed": _changed, "msg": output}
 
