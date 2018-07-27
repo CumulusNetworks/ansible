@@ -7,6 +7,8 @@
 from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
+import json
+
 
 ANSIBLE_METADATA = {'metadata_version': '1.1',
                     'status': ['preview'],
@@ -151,14 +153,30 @@ def command_helper(module, command, errmsg=None):
 
 def check_pending(module):
     """Check the pending diff of the nclu buffer."""
-    pending = command_helper(module, "pending", "Error in pending config. You may want to view `net pending` on this target.")
+    pending = command_helper(module, "pending json", "Error in pending config. You may want to view `net pending` on this target.")
 
-    delimeter1 = "net add/del commands since the last 'net commit'"
-    color1 = '\x1b[94m'
-    if delimeter1 in pending:
-        pending = pending.split(delimeter1)[0]
-        pending = pending.replace(color1, '')
-    return pending.strip()
+    return json.loads(pending).get('diffs', [])
+
+
+def colorize_pending(pending):
+    """Colorize the pending diff."""
+    RED = u'\u001b[31m'
+    BLUE = u'\u001b[34m'
+    GREEN = u'\u001b[32m'
+    RESET = u'\u001b[0m'
+
+    output = ""
+    for f in pending:
+        output += "%s--- %s\t%s%s\n"%(BLUE, f['fromFile'], f['fromFileTimestamp'], RESET)
+        output += "%s+++ %s\t%s%s\n"%(BLUE, f['toFile'], f['toFileTimestamp'], RESET)
+        for l in f['content']:
+            C1, C2 = "", ""
+            if l.startswith('+'): C1, C2 = GREEN, RESET
+            if l.startswith('-'): C1, C2 = RED, RESET
+            output += "%s%s%s\n"%(C1,l,C2)
+        output += "\n"
+
+    return output
 
 
 def run_nclu(module, command_list, command_string, commit, atomic, abort, description):
@@ -172,6 +190,7 @@ def run_nclu(module, command_list, command_string, commit, atomic, abort, descri
 
     do_commit = False
     do_abort = abort
+    my_diff = ""
     if commit or atomic:
         do_commit = True
         if atomic:
@@ -190,10 +209,12 @@ def run_nclu(module, command_list, command_string, commit, atomic, abort, descri
 
     # If pending changes changed, report a change.
     after = check_pending(module)
-    if before == after:
+    if json.dumps(before) == json.dumps(after):
         _changed = False
     else:
         _changed = True
+        my_diff = colorize_pending(after)
+
 
     # Do the commit.
     if do_commit:
@@ -204,7 +225,7 @@ def run_nclu(module, command_list, command_string, commit, atomic, abort, descri
         elif command_helper(module, "show commit last") == "":
             _changed = False
 
-    return _changed, output, dict(before=before+"\n", after=after+"\n")
+    return _changed, output, dict(prepared=my_diff)
 
 
 def main(testing=False):
