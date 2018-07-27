@@ -176,7 +176,6 @@ def run_nclu(module, command_list, command_string, commit, atomic, abort, descri
 
     do_commit = False
     do_abort = abort
-    my_diff = ""
     if commit or atomic:
         do_commit = True
         if atomic:
