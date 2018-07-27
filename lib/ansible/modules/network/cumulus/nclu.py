@@ -151,32 +151,18 @@ def command_helper(module, command, errmsg=None):
     return str(output)
 
 
-def check_pending(module):
-    """Check the pending diff of the nclu buffer."""
+def check_pending_json(module):
+    """Check the pending diff of the nclu buffer in json."""
     pending = command_helper(module, "pending json", "Error in pending config. You may want to view `net pending` on this target.")
 
-    return json.loads(pending).get('diffs', [])
+    return json.loads(pending)
 
 
-def colorize_pending(pending):
-    """Colorize the pending diff."""
-    RED = u'\u001b[31m'
-    BLUE = u'\u001b[34m'
-    GREEN = u'\u001b[32m'
-    RESET = u'\u001b[0m'
+def check_pending_text(module):
+    """Check the pending diff of the nclu buffer."""
+    pending = command_helper(module, "pending", "Error in pending config. You may want to view `net pending` on this target.")
 
-    output = ""
-    for f in pending:
-        output += "%s--- %s\t%s%s\n"%(BLUE, f['fromFile'], f['fromFileTimestamp'], RESET)
-        output += "%s+++ %s\t%s%s\n"%(BLUE, f['toFile'], f['toFileTimestamp'], RESET)
-        for l in f['content']:
-            C1, C2 = "", ""
-            if l.startswith('+'): C1, C2 = GREEN, RESET
-            if l.startswith('-'): C1, C2 = RED, RESET
-            output += "%s%s%s\n"%(C1,l,C2)
-        output += "\n"
-
-    return output
+    return pending
 
 
 def run_nclu(module, command_list, command_string, commit, atomic, abort, description):
@@ -200,7 +186,9 @@ def run_nclu(module, command_list, command_string, commit, atomic, abort, descri
         command_helper(module, "abort")
 
     # First, look at the staged commands.
-    before = check_pending(module)
+    before = check_pending_json(module)
+    before_color = check_pending_text(module)
+    
     # Run all of the net commands
     output_lines = []
     for line in commands:
@@ -209,12 +197,14 @@ def run_nclu(module, command_list, command_string, commit, atomic, abort, descri
     output = "\n".join(output_lines)
 
     # If pending changes changed, report a change.
-    after = check_pending(module)
-    if json.dumps(before) == json.dumps(after):
+    after = check_pending_json(module)
+    if json.dumps(before.get('diffs', [])) == json.dumps(after.get('diffs', [])):
         _changed = False
+        before_color = ""
+        after_color = ""
     else:
         _changed = True
-        my_diff = colorize_pending(after)
+        after_color = check_pending_text(module)
 
 
     # Do the commit.
@@ -226,7 +216,7 @@ def run_nclu(module, command_list, command_string, commit, atomic, abort, descri
         elif command_helper(module, "show commit last") == "":
             _changed = False
 
-    return _changed, output, dict(prepared=my_diff)
+    return _changed, output, dict(before=before_color, after=after_color)
 
 
 def main(testing=False):
@@ -257,3 +247,4 @@ def main(testing=False):
 
 if __name__ == '__main__':
     main()
+
