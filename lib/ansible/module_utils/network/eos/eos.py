@@ -153,7 +153,7 @@ class Cli:
         try:
             response = conn.edit_config(commands, commit, replace)
         except ConnectionError as exc:
-            message = getattr(exc, 'err', exc)
+            message = getattr(exc, 'err', to_text(exc))
             if "check mode is not supported without configuration session" in message:
                 self._module.warn("EOS can not check config without config session")
                 response = {'changed': True}
@@ -162,9 +162,10 @@ class Cli:
 
         return response
 
-    def get_diff(self, candidate=None, running=None, match='line', diff_ignore_lines=None, path=None, replace='line'):
+    def get_diff(self, candidate=None, running=None, diff_match='line', diff_ignore_lines=None, path=None, diff_replace='line'):
         conn = self._get_connection()
-        return conn.get_diff(candidate=candidate, running=running, match=match, diff_ignore_lines=diff_ignore_lines, path=path, replace=replace)
+        return conn.get_diff(candidate=candidate, running=running, diff_match=diff_match, diff_ignore_lines=diff_ignore_lines, path=path,
+                             diff_replace=diff_replace)
 
 
 class Eapi:
@@ -239,7 +240,7 @@ class Eapi:
 
         return response
 
-    def run_commands(self, commands):
+    def run_commands(self, commands, check_rc=True):
         """Runs list of commands on remote device and returns results
         """
         output = None
@@ -341,7 +342,11 @@ class Eapi:
             commands = ['configure session %s' % session, 'abort']
             self.send_request(commands)
             err = response['error']
-            self._module.fail_json(msg=err['message'], code=err['code'])
+            error_text = []
+            for data in err['data']:
+                error_text.extend(data.get('errors', []))
+            error_text = '\n'.join(error_text) or err['message']
+            self._module.fail_json(msg=error_text, code=err['code'])
 
         commands = ['configure session %s' % session, 'show session-config diffs']
         if commit:
@@ -357,17 +362,17 @@ class Eapi:
         return result
 
     # get_diff added here to support connection=local and transport=eapi scenario
-    def get_diff(self, candidate, running=None, match='line', diff_ignore_lines=None, path=None, replace='line'):
+    def get_diff(self, candidate, running=None, diff_match='line', diff_ignore_lines=None, path=None, diff_replace='line'):
         diff = {}
 
         # prepare candidate configuration
         candidate_obj = NetworkConfig(indent=3)
         candidate_obj.load(candidate)
 
-        if running and match != 'none' and replace != 'config':
+        if running and diff_match != 'none' and diff_replace != 'config':
             # running configuration
             running_obj = NetworkConfig(indent=3, contents=running, ignore_lines=diff_ignore_lines)
-            configdiffobjs = candidate_obj.difference(running_obj, path=path, match=match, replace=replace)
+            configdiffobjs = candidate_obj.difference(running_obj, path=path, match=diff_match, replace=diff_replace)
 
         else:
             configdiffobjs = candidate_obj.items
@@ -420,6 +425,6 @@ def load_config(module, config, commit=False, replace=False):
     return conn.load_config(config, commit, replace)
 
 
-def get_diff(self, candidate=None, running=None, match='line', diff_ignore_lines=None, path=None, replace='line'):
+def get_diff(self, candidate=None, running=None, diff_match='line', diff_ignore_lines=None, path=None, diff_replace='line'):
     conn = self.get_connection()
-    return conn.get_diff(candidate=candidate, running=running, match=match, diff_ignore_lines=diff_ignore_lines, path=path, replace=replace)
+    return conn.get_diff(candidate=candidate, running=running, diff_match=diff_match, diff_ignore_lines=diff_ignore_lines, path=path, diff_replace=diff_replace)
